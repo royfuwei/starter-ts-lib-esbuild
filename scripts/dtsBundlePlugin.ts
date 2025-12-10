@@ -1,17 +1,23 @@
-// dtsBundlePlugin.js
+/* eslint-disable @typescript-eslint/require-await */
 import { generateDtsBundle } from 'dts-bundle-generator';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import esbuild from 'esbuild';
 
-export function dtsBundlePlugin(options = {}) {
-  // const { type, entry, outFile, noCheck, preferredConfigPath } = options;
+type DtsBundlePluginType = {
+  type?: string;
+  entry?: string;
+  outFile?: string;
+  preferredConfigPath?: string;
+};
+
+export function dtsBundlePlugin(options: DtsBundlePluginType = {}) {
   const {
     type,
     entry = './types/index.d.ts', // TS原始碼入口(或已產生的.d.ts) // './src/index.ts'
     outFile = './dist/index.d.ts', // 輸出合併後的檔案
-    noCheck = false, // 是否跳過型別檢查
-    preferredConfigPath = './tsconfig.json', // 若你有自訂 tsconfig.json 路徑
+    preferredConfigPath = './tsconfig.build.json', // 若你有自訂 tsconfig.json 路徑
   } = options;
   const name = type ? `${type}-dts-bundle-plugin` : 'dts-bundle-plugin';
   const dtsBundleGenerator = async () => {
@@ -30,7 +36,6 @@ export function dtsBundlePlugin(options = {}) {
         [
           {
             filePath: entry,
-            noCheck, // 是否跳過型別檢查
           },
         ],
         {
@@ -49,35 +54,11 @@ export function dtsBundlePlugin(options = {}) {
       console.error(`[${name}] Failed to generate d.ts:`, err);
     }
   };
-  switch (type) {
-    case 'rollup':
-      return {
-        name,
-        writeBundle() {
-          dtsBundleGenerator();
-        },
-      };
-    case 'esbuild':
-      return {
-        name,
-        setup(build) {
-          if (build.errors && build.errors.length) {
-            // 如果 esbuild 在編譯JS時就出錯, 視情況要不要繼續生成 dts
-            console.log(`[dts-bundle-plugin] Skipped because esbuild build has errors.`);
-            return;
-          }
-
-          console.log(`[dts-bundle-plugin] Generating d.ts from: ${entry}`);
-          build.onEnd(() => dtsBundleGenerator());
-        },
-      };
-    default:
-      return dtsBundleGenerator();
-  }
+  return {
+    name,
+    setup(build: esbuild.PluginBuild) {
+      console.log(`[dts-bundle-plugin] Generating d.ts from: ${entry}`);
+      build.onEnd(() => dtsBundleGenerator());
+    },
+  };
 }
-
-export const esbuildDtsBundlePlugin = (options = {}) =>
-  dtsBundlePlugin({
-    ...options,
-    type: 'esbuild',
-  });
